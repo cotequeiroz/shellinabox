@@ -1362,7 +1362,7 @@ static void setUpSSL(Server *server) {
 int main(int argc, char * const argv[]) {
 #ifdef HAVE_SYS_PRCTL_H
   // Disable core files
-  prctl(PR_SET_DUMPABLE, 0, 0, 0, 0);
+//  prctl(PR_SET_DUMPABLE, 0, 0, 0, 0);
 #endif
   struct rlimit rl = { 0 };
   setrlimit(RLIMIT_CORE, &rl);

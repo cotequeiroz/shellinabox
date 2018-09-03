@@ -219,7 +219,7 @@ static int maybeLoadCrypto(void) {
   // The feature is currently disabled.
   const char* path_libcrypto = NULL; // getenv ("SHELLINABOX_LIBCRYPTO_SO");
   if (path_libcrypto == NULL)
-    path_libcrypto = "libcrypto.so";
+    path_libcrypto = "libcrypto.so.1.1";
 
   if (!crypto++) {
 #ifdef RTLD_NOLOAD
@@ -278,7 +278,7 @@ static void loadSSL(void) {
   // The feature is currently disabled.
   const char* path_libssl = NULL; // = getenv ("SHELLINABOX_LIBSSL_SO");
   if (path_libssl == NULL)
-    path_libssl = "libssl.so";
+    path_libssl = "libssl.so.1.1";
 #if OPENSSL_VERSION_NUMBER < 0x10100000L
   check(!SSL_library_init);
 #endif
@@ -421,31 +421,49 @@ static void sslGenerateCertificate(const char *certificate,
 
   pid_t pid       = fork();
   if (pid == -1) {
-    warn("[ssl] Failed to generate self-signed certificate \"%s\"!", certificate);
+    warn("[ssl] Failed to generate self-signed certificate \"%s\": fork() failed!", certificate);
   } else if (pid == 0) {
+    //int newfd;
+    warn("[ssl] int fd = NOINTR(open(\"/dev/null\", O_RDONLY));");
     int fd        = NOINTR(open("/dev/null", O_RDONLY));
+    warn("[ssl] check(fd != -1);");
     check(fd != -1);
-    check(NOINTR(dup2(fd, STDERR_FILENO)) == STDERR_FILENO);
-    check(NOINTR(close(fd)) == 0);
+    //warn("[ssl] newfd = NOINTR(dup2(fd, STDERR_FILENO [%d]));", STDERR_FILENO);
+    //newfd = dup2(fd, STDERR_FILENO);
+    //warn("[ssl] newfd = %d", newfd);
+    //warn("[ssl] check(NOINTR(dup2(fd, STDERR_FILENO)) == STDERR_FILENO);");
+    //check(newfd == STDERR_FILENO);
+    //warn("[ssl] check(NOINTR(close(fd)) == 0);");
+    //check(NOINTR(close(fd)) == 0);
+    warn("[ssl] fd            = NOINTR(open(\"/dev/null\", O_WRONLY));");
     fd            = NOINTR(open("/dev/null", O_WRONLY));
+    warn("[ssl] check(fd != -1);");
     check(fd != -1);
-    check(NOINTR(dup2(fd, STDIN_FILENO)) == STDIN_FILENO);
-    check(NOINTR(close(fd)) == 0);
+    //warn("[ssl] check(NOINTR(dup2(fd, STDIN_FILENO)) == STDIN_FILENO);");
+    //check(NOINTR(dup2(fd, STDIN_FILENO)) == STDIN_FILENO);
+    //warn("[ssl] check(NOINTR(close(fd)) == 0);");
+    //check(NOINTR(close(fd)) == 0);
+    warn("[ssl] umask(077);");
     umask(077);
+    warn("[ssl] check(setenv(\"PATH\", \"/usr/bin:/usr/sbin\", 1) == 0);");
     check(setenv("PATH", "/usr/bin:/usr/sbin", 1) == 0);
     char *subject;
+    warn("[ssl] check(subject = stringPrintf(NULL, \"/CN=%%s/\", serverName));");
     check(subject = stringPrintf(NULL, "/CN=%s/", serverName));
-    if (execlp("openssl", "openssl", "req", "-x509", "-nodes", "-days", "7300",
+    warn("[ssl] execlp(\"/usr/lib64/openssl-1.1/bin/openssl\", \"openssl\", \"req\", \"-x509\", \"-nodes\", \"-days\", \"7300\", \"-newkey\", \"rsa:2048\", \"-keyout\", certificate, \"-out\", certificate, \"-subj\", subject, (char *)NULL) < 0)");
+    if (execlp("/usr/lib64/openssl-1.1/bin/openssl", "openssl", "req", "-x509", "-nodes", "-days", "7300",
                "-newkey", "rsa:2048", "-keyout", certificate, "-out", certificate,
                "-subj", subject, (char *)NULL) < 0) {
-      warn("[ssl] Failed to generate self-signed certificate \"%s\"!", certificate);
+      warn("[ssl] Failed to generate self-signed certificate \"%s\": execlp() failed!", certificate);
       free(subject);
     }
   } else {
-    int status;
+    int status, sib_wifexited, sib_wexitstatus;
     check(NOINTR(waitpid(pid, &status, 0)) == pid);
-    if (!WIFEXITED(status) || WEXITSTATUS(status) != 0) {
-      warn("[ssl] Failed to generate self-signed certificate \"%s\"!", certificate);
+    sib_wifexited = WIFEXITED(status);
+    sib_wexitstatus = WEXITSTATUS(status);
+    if (!sib_wifexited || sib_wexitstatus != 0) {
+      warn("[ssl] Failed to generate self-signed certificate \"%s\" WIFIEXITED=%d WEXITSTATSU=%d!", certificate, sib_wifexited, sib_wexitstatus);
     } else {
       info("[ssl] Certificate successfully generated.");
     }
@@ -656,7 +674,7 @@ static void sslInfoCallback(const SSL *sslHndl, int type, int val) {
 
 static SSL_CTX *sslMakeContext(void) {
 
-  SSL_CTX *context;
+  SSL_CTX *context = NULL;
 #if OPENSSL_VERSION_NUMBER < 0x10100000L
   check(context = SSL_CTX_new(SSLv23_server_method()));
 #else
@@ -677,7 +695,7 @@ static SSL_CTX *sslMakeContext(void) {
 #endif
 
   // Set default SSL options.
-  SSL_CTX_set_options(context, options);
+  //SSL_CTX_set_options(context, options);
 
   // Workaround for SSL_OP_NO_COMPRESSION with older OpenSSL versions.
 #if OPENSSL_VERSION_NUMBER < 0x10100000L
@@ -694,25 +712,36 @@ static SSL_CTX *sslMakeContext(void) {
   // SSL options, provide eliptic curve key object for handshake and add chipers
   // suits with ECDHE handshake on top of the ciper list.
 #ifdef HAVE_OPENSSL_EC
-  SSL_CTX_set_options(context, SSL_OP_SINGLE_ECDH_USE);
-  SSL_CTX_set_options(context, SSL_OP_CIPHER_SERVER_PREFERENCE);
+  // SSL_CTX_set_options(context, SSL_OP_SINGLE_ECDH_USE);
+  // SSL_CTX_set_options(context, SSL_OP_CIPHER_SERVER_PREFERENCE);
 
+// This is handled automatically in openssl 1.1
+#if OPENSSL_VERSION_NUMBER < 0x10002000L 
   EC_KEY *ecKey;
   check(ecKey   = EC_KEY_new_by_curve_name(NID_X9_62_prime256v1));
   SSL_CTX_set_tmp_ecdh(context, ecKey);
   EC_KEY_free(ecKey);
-
+#elif OPENSSL_VERSION_NUMBER < 0x10100000L
+  SSL_CTX_set_ecdh_auto(context, 1);
+#endif
   debug("[ssl] Support for PFS enabled...");
 #endif
 
   check(SSL_CTX_set_cipher_list(context,
+    "ECDHE-ECDSA-CHACHA20-POLY1305:"
+    "ECDHE-RSA-CHACHA20-POLY1305:"
+    "ECDHE-ECDSA-AES256-GCM-SHA384:"
     "ECDHE-RSA-AES256-GCM-SHA384:"
+    "ECDHE-ECDSA-AES128-GCM-SHA256:"
     "ECDHE-RSA-AES128-GCM-SHA256:"
+    "ECDHE-ECDSA-AES256-SHA384:"
     "ECDHE-RSA-AES256-SHA384:"
+    "ECDHE-ECDSA-AES128-SHA256:"
     "ECDHE-RSA-AES128-SHA256:"
+    "ECDHE-ECDSA-AES256-SHA:"
     "ECDHE-RSA-AES256-SHA:"
+    "ECDHE-ECDSA-AES128-SHA:"
     "ECDHE-RSA-AES128-SHA:"
-    "ECDHE-RSA-DES-CBC3-SHA:"
     "HIGH:MEDIUM:!RC4:!aNULL:!MD5"));
 
   SSL_CTX_set_info_callback(context, sslInfoCallback);
