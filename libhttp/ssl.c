@@ -219,7 +219,7 @@ static int maybeLoadCrypto(void) {
   // The feature is currently disabled.
   const char* path_libcrypto = NULL; // getenv ("SHELLINABOX_LIBCRYPTO_SO");
   if (path_libcrypto == NULL)
-    path_libcrypto = "libcrypto.so";
+    path_libcrypto = DEFAULT_LIBCRYPTO_SO;
 
   if (!crypto++) {
 #ifdef RTLD_NOLOAD
@@ -278,10 +278,8 @@ static void loadSSL(void) {
   // The feature is currently disabled.
   const char* path_libssl = NULL; // = getenv ("SHELLINABOX_LIBSSL_SO");
   if (path_libssl == NULL)
-    path_libssl = "libssl.so";
-#if OPENSSL_VERSION_NUMBER < 0x10100000L
-  check(!SSL_library_init);
-#endif
+    path_libssl = DEFAULT_LIBSSL_SO;
+  check(!SSL_CTX_new);
   struct {
     union {
       void *avoid_gcc_warning_about_type_punning;
@@ -312,7 +310,7 @@ static void loadSSL(void) {
     { { &SSL_CTX_new },                 "SSL_CTX_new" },
     { { &SSL_CTX_set_cipher_list },     "SSL_CTX_set_cipher_list" },
     { { &SSL_CTX_set_info_callback },   "SSL_CTX_set_info_callback" },
-#if OPENSSL_VERSION_NUMBER < 0x10100000L
+#if OPENSSL_VERSION_NUMBER > 0x10100000L
     { { &SSL_CTX_set_options },         "SSL_CTX_set_options" },
 #endif
     { { &SSL_CTX_use_PrivateKey_file }, "SSL_CTX_use_PrivateKey_file" },
@@ -679,8 +677,8 @@ static SSL_CTX *sslMakeContext(void) {
   // Set default SSL options.
   SSL_CTX_set_options(context, options);
 
-  // Workaround for SSL_OP_NO_COMPRESSION with older OpenSSL versions.
 #if OPENSSL_VERSION_NUMBER < 0x10100000L
+  // Workaround for SSL_OP_NO_COMPRESSION with older OpenSSL versions.
 #ifdef HAVE_DLOPEN
   if (SSL_COMP_get_compression_methods) {
     sk_SSL_COMP_zero(SSL_COMP_get_compression_methods());
@@ -697,21 +695,39 @@ static SSL_CTX *sslMakeContext(void) {
   SSL_CTX_set_options(context, SSL_OP_SINGLE_ECDH_USE);
   SSL_CTX_set_options(context, SSL_OP_CIPHER_SERVER_PREFERENCE);
 
+#if OPENSSL_VERSION_NUMBER < 0x10100000L /* openssl 1.1 does this automatically */
   EC_KEY *ecKey;
   check(ecKey   = EC_KEY_new_by_curve_name(NID_X9_62_prime256v1));
   SSL_CTX_set_tmp_ecdh(context, ecKey);
   EC_KEY_free(ecKey);
+#endif
 
   debug("[ssl] Support for PFS enabled...");
 #endif
 
   check(SSL_CTX_set_cipher_list(context,
+#ifdef SHELLINABOX_USE_CHACHA_FIRST
+    "ECDHE-ECDSA-CHACHA20-POLY1305:"
+    "ECDHE-RSA-CHACHA20-POLY1305:"
+    "ECDHE-ECDSA-AES256-GCM-SHA384:"
     "ECDHE-RSA-AES256-GCM-SHA384:"
+#else
+    "ECDHE-ECDSA-AES256-GCM-SHA384:"
+    "ECDHE-RSA-AES256-GCM-SHA384:"
+    "ECDHE-ECDSA-CHACHA20-POLY1305:"
+    "ECDHE-RSA-CHACHA20-POLY1305:"
+#endif
+    "ECDHE-ECDSA-AES128-GCM-SHA256:"
     "ECDHE-RSA-AES128-GCM-SHA256:"
+    "ECDHE-ECDSA-AES256-SHA384:"
     "ECDHE-RSA-AES256-SHA384:"
+    "ECDHE-ECDSA-AES128-SHA256:"
     "ECDHE-RSA-AES128-SHA256:"
+    "ECDHE-ECDSA-AES256-SHA:"
     "ECDHE-RSA-AES256-SHA:"
+    "ECDHE-ECDSA-AES128-SHA:"
     "ECDHE-RSA-AES128-SHA:"
+    "ECDHE-ECDSA-DES-CBC3-SHA:"
     "ECDHE-RSA-DES-CBC3-SHA:"
     "HIGH:MEDIUM:!RC4:!aNULL:!MD5"));
 

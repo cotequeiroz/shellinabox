@@ -78,6 +78,17 @@ typedef struct X509       X509;
 #endif
 
 #if defined(HAVE_DLOPEN)
+#if !defined(DEFAULT_LIBCRYPTO_SO) || !defined(DEFAULT_LIBSSL_SO)
+#undef DEFAULT_LIBCRYPTO_SO
+#undef DEFAULT_LIBSSL_SO
+#ifdef SHLIB_VERSION_NUMBER
+#define DEFAULT_LIBCRYPTO_SO "libcrypto.so." SHLIB_VERSION_NUMBER
+#define DEFAULT_LIBSSL_SO "libssl.so." SHLIB_VERSION_NUMBER
+#else
+#define DEFAULT_LIBCRYPTO_SO "libcrypto.so"
+#define DEFAULT_LIBSSL_SO "libssl.so"
+#endif
+#endif
 extern long    (*x_BIO_ctrl)(BIO *, int, long, void *);
 extern BIO_METHOD *(*x_BIO_f_buffer)(void);
 extern void    (*x_BIO_free_all)(BIO *);
